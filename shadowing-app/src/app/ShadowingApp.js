@@ -288,9 +288,12 @@ export default function ShadowingApp() {
         :root{--bg:#f8f7f4;--bg2:#fff;--bg3:#f0eeea;--border:#e0ddd7;--border2:#ccc9c1;--text:#1a1916;--text2:#6b6860;--text3:#9e9b93;--accent:#2d6a4f;--accent-bg:#e8f5ee;--accent-text:#1a4731;--warn-bg:#fef3c7;--warn:#92400e;--blue:#1e4d8c;--blue-bg:#eff6ff;--red:#991b1b;--red-bg:#fee2e2;--r:10px;--rl:14px}
         @media(prefers-color-scheme:dark){:root{--bg:#18181a;--bg2:#242427;--bg3:#2e2e32;--border:#38383d;--border2:#4a4a51;--text:#f0eff0;--text2:#9b9aa0;--text3:#5e5d64;--accent:#4ade80;--accent-bg:#14291e;--accent-text:#86efac;--warn-bg:#292105;--warn:#fbbf24;--blue:#60a5fa;--blue-bg:#0d1f36;--red:#f87171;--red-bg:#2d1010}}
         body{background:var(--bg);color:var(--text);font-family:'Helvetica Neue',Arial,sans-serif;min-height:100vh}
-        .shell{display:grid;grid-template-columns:272px 1fr;min-height:100vh}
+        .shell{display:grid;grid-template-columns:272px 1fr 260px;min-height:100vh}
         .sb{background:var(--bg2);border-right:1px solid var(--border);padding:1.25rem 1rem;display:flex;flex-direction:column;gap:1rem;position:sticky;top:0;height:100vh;overflow-y:auto}
         .main{padding:1.75rem 2rem;max-width:780px}
+        .right-panel{background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
+        .rp-hd{padding:.75rem 1rem;font-size:12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);background:var(--bg3);flex-shrink:0}
+        .rp-list{flex:1;overflow-y:auto}
         .logo{display:flex;align-items:center;gap:.5rem}
         .logo-icon{width:30px;height:30px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
         .logo-icon svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round}
@@ -376,7 +379,7 @@ export default function ShadowingApp() {
         .err{font-size:12px;color:var(--red);padding:.4rem .6rem;background:var(--red-bg);border-radius:6px;margin-top:.4rem}
         .ok{font-size:11px;color:var(--accent-text);padding:.3rem .5rem;background:var(--accent-bg);border-radius:5px;margin-top:.35rem}
         ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-        @media(max-width:640px){.shell{grid-template-columns:1fr}.sb{height:auto;position:static}.main{padding:1rem}}
+        @media(max-width:900px){.shell{grid-template-columns:272px 1fr}.right-panel{display:none}}.@media(max-width:640px){.shell{grid-template-columns:1fr}.sb{height:auto;position:static}.main{padding:1rem}}
       `}</style>
       <div className="shell">
         <aside className="sb">
@@ -528,17 +531,17 @@ export default function ShadowingApp() {
               </div>
             ))}
           </div>}
-          {subs.length>0&&<div className="sub-list-card">
-            <div className="list-hd">字幕清單 <span style={{fontWeight:400,color:'var(--text3)'}}>共 {subs.length} 句</span></div>
-            <div className="sub-list">
-              {subs.map((s,i)=>(
-                <div key={i} id={'si'+i} className={'si'+(i===curIdx?' cur':'')} onClick={()=>{stopAll();S.current.repDone=0;playSentence(i)}}>
-                  <span className="ts">{fmt(s.s)}</span><span className="st">{s.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>}
         </main>
+        <div className="right-panel">
+          <div className="rp-hd">字幕清單 <span style={{fontWeight:400,color:'var(--text3)'}}>共 {subs.length} 句</span></div>
+          <div className="rp-list sub-list">
+            {subs.map((s,i)=>(
+              <div key={i} id={'si'+i} className={'si'+(i===curIdx?' cur':'')} onClick={()=>{stopAll();S.current.repDone=0;playSentence(i)}}>
+                <span className="ts">{fmt(s.s)}</span><span className="st">{s.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </>
   )
