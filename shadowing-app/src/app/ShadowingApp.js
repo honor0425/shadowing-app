@@ -115,8 +115,10 @@ export default function ShadowingApp() {
   const onSentEndRef = useRef(null)
   const playSentenceRef = useRef(null)
   const startRecRef = useRef(null)
+  const tabRef = useRef('local')
 
   useEffect(() => { subsRef.current = subs }, [subs])
+  useEffect(() => { tabRef.current = tab }, [tab])
   useEffect(() => { repNRef.current = repN }, [repN])
   useEffect(() => { pauseSecRef.current = pauseSec }, [pauseSec])
   useEffect(() => { shadowRef.current = shadowMode }, [shadowMode])
@@ -197,7 +199,7 @@ export default function ShadowingApp() {
     setBadge({type:'play', txt:'▶ '+repDoneRef.current+'/'+repNRef.current})
     setStatus({dot:'play', msg:'播放第 '+repDoneRef.current+'/'+repNRef.current+' 次'})
 
-    if (tab === 'yt') {
+    if (tabRef.current === 'yt') {
       const yt = ytPlayerRef.current; if (!yt) return
       try {
         yt.setPlaybackRate(speedRef.current)
@@ -228,7 +230,7 @@ export default function ShadowingApp() {
 
   const togglePlay = () => {
     if (!subs.length) { alert('請先載入字幕'); return }
-    if (tab === 'yt' && !ytReady) { alert('播放器尚未就緒'); return }
+    if (tabRef.current === 'yt' && !ytReady) { alert('播放器尚未就緒，請稍候'); return }
     if (playingRef.current || waitingRef.current) { stopAll(); setStatus({dot:'', msg:'暫停'}) }
     else { const idx = curIdxRef.current < 0 ? 0 : curIdxRef.current; repDoneRef.current = 0; playSentence(idx) }
   }
