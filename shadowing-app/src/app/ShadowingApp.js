@@ -224,7 +224,7 @@ export default function ShadowingApp() {
       if (timerRef.current) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => { vid.pause(); onSentEndRef.current() }, (s.e - s.s) / speedRef.current * 1000 + 150)
     }
-  }, [tab])
+  }, [])
 
   useEffect(() => { playSentenceRef.current = playSentence }, [playSentence])
 
