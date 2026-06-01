@@ -193,17 +193,28 @@ export default function ShadowingApp() {
     r.readAsText(f)
   }
 
-  const loadYT = async () => {
+  const pendingYTId = useRef(null)
+
+  const loadYT = () => {
     const input = document.getElementById('yt-url-input')
     if (!input) return
     const url = input.value.trim()
     const m = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/)
     if (!m) { upUI({ytError:'請輸入有效的 YouTube 網址'}); return }
     const id = m[1]
+    pendingYTId.current = id
     S.current.tab='yt'; S.current.curIdx=-1
+    stopAll()
     upUI({ytId:id, showPlayer:true, ytError:'', ytLoading:false, tab:'yt', curIdx:-1, status:{dot:'', msg:'影片載入中...'}})
-    stopAll(); initYT(id)
   }
+
+  // init YT player after ytId state is set and yt-div is in the DOM
+  useEffect(() => {
+    if (!pendingYTId.current) return
+    const id = pendingYTId.current
+    pendingYTId.current = null
+    initYT(id)
+  }, [ui.ytId])
 
   const startRec = async () => {
     try {
