@@ -201,24 +201,8 @@ export default function ShadowingApp() {
     if (!m) { upUI({ytError:'請輸入有效的 YouTube 網址'}); return }
     const id = m[1]
     S.current.tab='yt'; S.current.curIdx=-1
-    upUI({ytId:id, showPlayer:true, ytError:'', ytLoading:true, tab:'yt', curIdx:-1, status:{dot:'', msg:'載入中...'}})
+    upUI({ytId:id, showPlayer:true, ytError:'', ytLoading:false, tab:'yt', curIdx:-1, status:{dot:'', msg:'影片載入中...'}})
     stopAll(); initYT(id)
-    try {
-      const res = await fetch('/api/transcript?id='+id)
-      const data = await res.json()
-      if (data.error) {
-        upUI({ytError:'字幕自動抓取失敗，請手動上傳 SRT', ytLoading:false})
-      } else {
-        const parsed = data.transcript.map(item => ({
-          s:item.offset/1000, e:(item.offset+item.duration)/1000,
-          text:item.text.replace(/&#39;/g,"'").replace(/&amp;/g,'&').replace(/\n/g,' ').trim()
-        }))
-        S.current.subs=parsed; S.current.curIdx=-1
-        upUI({subs:parsed, subFileName:'YouTube CC', curIdx:-1, ytLoading:false, status:{dot:'', msg:'字幕已載入，共 '+parsed.length+' 句'}})
-      }
-    } catch(e) {
-      upUI({ytError:'字幕自動抓取失敗，請手動上傳 SRT', ytLoading:false})
-    }
   }
 
   const startRec = async () => {
@@ -291,9 +275,9 @@ export default function ShadowingApp() {
         .shell{display:grid;grid-template-columns:272px 1fr 260px;min-height:100vh}
         .sb{background:var(--bg2);border-right:1px solid var(--border);padding:1.25rem 1rem;display:flex;flex-direction:column;gap:1rem;position:sticky;top:0;height:100vh;overflow-y:auto}
         .main{padding:1.75rem 2rem;max-width:780px}
-        .right-panel{background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
+        .right-panel{background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden;min-height:0}
         .rp-hd{padding:.75rem 1rem;font-size:12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);background:var(--bg3);flex-shrink:0}
-        .rp-list{flex:1;overflow-y:auto}
+        .rp-list{flex:1;overflow-y:auto;min-height:0}
         .logo{display:flex;align-items:center;gap:.5rem}
         .logo-icon{width:30px;height:30px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
         .logo-icon svg{width:16px;height:16px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round}
@@ -365,7 +349,7 @@ export default function ShadowingApp() {
         .rec-timer{font-size:13px;font-weight:600;color:var(--red);min-width:36px;font-variant-numeric:tabular-nums}
         .sub-list-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:1rem}
         .list-hd{padding:.65rem 1rem;font-size:12px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);background:var(--bg3)}
-        .sub-list{max-height:260px;overflow-y:auto}
+        .sub-list{overflow-y:auto}
         .si{display:flex;gap:.65rem;padding:.55rem 1rem;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s;align-items:flex-start}
         .si:last-child{border-bottom:none}.si:hover{background:var(--bg3)}.si.cur{background:var(--accent-bg)}
         .si .ts{font-size:11px;color:var(--text3);min-width:40px;padding-top:1px;font-variant-numeric:tabular-nums}
@@ -420,11 +404,11 @@ export default function ShadowingApp() {
                 <button className="yt-btn" onClick={loadYT} disabled={ytLoading}>{ytLoading?'載入中...':'載入'}</button>
               </div>
               {ytError&&<div className="err">{ytError}</div>}
-              {!ytError&&subs.length>0&&tab==='yt'&&<div className="ok">✓ 字幕已載入 {subs.length} 句</div>}
+              {subs.length>0&&tab==='yt'&&<div className="ok">✓ 字幕已載入 {subs.length} 句</div>}
               {ytId&&!ytReady&&<div style={{fontSize:11,color:'var(--text3)',marginTop:4}}>播放器載入中...</div>}
               {ytId&&ytReady&&<div style={{fontSize:11,color:'var(--accent-text)',marginTop:4}}>✓ 播放器就緒</div>}
               <div style={{height:'.5rem'}}/>
-              <div className="tip">字幕抓取失敗時，可至 <a href="https://downsub.com" target="_blank" style={{color:'var(--accent)'}}>Downsub.com</a> 下載 SRT 後手動上傳</div>
+              <div className="tip">請至 <a href="https://downsub.com" target="_blank" style={{color:'var(--accent)'}}>Downsub.com</a> 下載 SRT 後在下方上傳</div>
             </div>
             <div>
               <div className="lbl">手動上傳字幕（選用）</div>
