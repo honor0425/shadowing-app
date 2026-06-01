@@ -326,8 +326,8 @@ export default function ShadowingApp() {
         h1{font-size:18px;font-weight:700;letter-spacing:-.02em;font-family:Georgia,serif}
         .sub-tag{font-size:12px;color:var(--text2)}
         .player-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
-        .player-card video{width:100%;display:block;max-height:220px;background:#000;object-fit:contain}
-        .yt-wrap{height:200px;background:#000}.yt-wrap #yt-div{width:100%;height:100%}
+        .player-card video{width:100%;display:block;max-height:220px;background:#000;object-fit:contain;aspect-ratio:16/9}
+        .yt-wrap{aspect-ratio:16/9;background:#000;max-height:220px}.yt-wrap #yt-div{width:100%;height:100%}
         .player-ph{height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;color:var(--text3);text-align:center}
         .player-ph svg{width:36px;height:36px;opacity:.2}.player-ph p{font-size:13px;line-height:1.5}
         .stat-bar{display:flex;align-items:center;gap:.45rem;font-size:12px;color:var(--text2)}
@@ -350,7 +350,7 @@ export default function ShadowingApp() {
         .btn{padding:7px 16px;font-size:13px;font-weight:500;border:1px solid var(--border);border-radius:8px;background:var(--bg2);color:var(--text);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:.3rem}
         .btn:hover{background:var(--bg3)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.primary:hover{opacity:.9}
         .btn.danger{background:var(--red-bg);border-color:var(--red);color:var(--red)}.btn.sm{padding:5px 11px;font-size:12px}.btn.icon{padding:7px 10px}.btn:disabled{opacity:.4;cursor:not-allowed}
-        .rec-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:.75rem 1.1rem}
+        .rec-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:.6rem 1.1rem}
         .rec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem}.rec-title{font-size:14px;font-weight:600}
         .wf{height:40px;background:var(--bg3);border-radius:8px;margin-bottom:.5rem;display:flex;align-items:center;justify-content:center;overflow:hidden}
         .wf-bars{display:flex;align-items:center;gap:2px;height:100%;padding:6px 10px}
@@ -469,8 +469,7 @@ export default function ShadowingApp() {
           </div>
         </aside>
         <main className="main">
-          <h1>跟讀練習</h1>
-          <p className="sub-tag">分句播放 · 重複練習 · 錄音對比</p>
+
           <div className="player-card">
             {showPlayer&&tab==='local'&&vidSrc
               ?<video ref={vidRef} src={vidSrc}
@@ -503,11 +502,7 @@ export default function ShadowingApp() {
           </div>
           <div className="rec-card">
             <div className="rec-hd"><span className="rec-title">🎙 錄音</span><span style={{fontSize:12,color:'var(--text3)'}}>跟著朗讀後播放比對</span></div>
-            <div className="wf">
-              {waveBars.length>0
-                ?<div className="wf-bars">{waveBars.map((h,i)=><div key={i} className="wf-bar" style={{height:h+'px',opacity:recActive?.75:.4}}/>)}</div>
-                :<span className="wf-idle">尚未錄音</span>}
-            </div>
+
             <div className="rec-ctrl">
               <button className={'btn sm'+(recActive?' danger':'')} onClick={()=>recActive?stopRec():startRec()}>{recActive?'■ 停止錄音':'● 開始錄音'}</button>
               {recActive&&<span className="rec-timer">{fmt(recSec)}</span>}
