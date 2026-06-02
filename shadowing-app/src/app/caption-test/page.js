@@ -10,7 +10,7 @@ export default function CaptionTestPage() {
 
   return (
     <div style={{background:'#111',color:'#eee',fontFamily:'monospace',padding:'1.5rem',minHeight:'100vh'}}>
-      <h2 style={{marginBottom:'1rem'}}>YouTube Caption 內容抓取測試</h2>
+      <h2 style={{marginBottom:'1rem'}}>字幕 XML 解析測試</h2>
       <input id="url" defaultValue="https://www.youtube.com/watch?v=arj7oStGLkU"
         style={{width:'100%',padding:'8px',background:'#222',color:'#eee',border:'1px solid #444',borderRadius:'6px',marginBottom:'8px',boxSizing:'border-box'}}/>
       <button id="load-btn" style={{padding:'8px 18px',background:'#4ade80',color:'#000',border:'none',borderRadius:'6px',cursor:'pointer',fontWeight:'600',marginBottom:'1rem',display:'block'}}>
@@ -26,6 +26,23 @@ export default function CaptionTestPage() {
           el.innerHTML += '<span style="color:'+color+'">'+msg+'</span>\\n';
           el.scrollTop = el.scrollHeight;
         }
+
+        function parseXMLCaptions(xml) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(xml, 'text/xml');
+          const texts = doc.querySelectorAll('text');
+          const result = [];
+          texts.forEach(function(t) {
+            const start = parseFloat(t.getAttribute('start'));
+            const dur = parseFloat(t.getAttribute('dur') || '2');
+            const text = t.textContent
+              .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+              .replace(/&#39;/g,"'").replace(/&quot;/g,'"').trim();
+            if (text) result.push({ s: start, e: start + dur, text: text });
+          });
+          return result;
+        }
+
         window.onYouTubeIframeAPIReady = function() { log('YT API 就緒'); }
 
         document.getElementById('load-btn').onclick = function() {
@@ -41,82 +58,54 @@ export default function CaptionTestPage() {
             playerVars: { cc_load_policy:1, cc_lang_pref:'en' },
             events: {
               onReady: function(e) {
-                log('播放器就緒！開始測試...', true);
+                log('播放器就緒！', true);
                 const p = e.target;
                 try { p.loadModule('captions'); } catch(err){}
-
-                // Step 1: play to trigger caption load
                 p.playVideo();
                 setTimeout(function() {
                   p.pauseVideo();
-
-                  // Step 2: get tracklist
                   const tl = p.getOption('captions','tracklist');
-                  if (!tl || !tl.length) { log('❌ 沒有字幕', false); return; }
+                  if (!tl || !tl.length) { log('❌ 沒有字幕軌道', false); return; }
+                  const en = tl.find(function(t){return t.languageCode==='en'})
+                    || tl.find(function(t){return t.languageCode.startsWith('en')})
+                    || tl[0];
+                  log('字幕語言: ' + en.languageCode + ' vss_id=' + en.vss_id, true);
 
-                  const en = tl.find(t => t.languageCode === 'en') || tl.find(t => t.languageCode.startsWith('en')) || tl[0];
-                  log('使用字幕: ' + en.languageCode + ' vss_id=' + en.vss_id, true);
+                  // Try all working URL patterns with XML parsing
+                  const urlsToTry = [
+                    'https://www.youtube.com/api/timedtext?v='+id+'&lang='+en.languageCode,
+                    'https://www.youtube.com/api/timedtext?v='+id+'&tlang=en&lang='+en.languageCode,
+                    'https://www.youtube.com/api/timedtext?v='+id+'&lang=en',
+                    'https://www.youtube.com/api/timedtext?v='+id+'&lang=en&kind=asr',
+                    'https://www.youtube.com/api/timedtext?v='+id+'&lang=a.en',
+                  ];
 
-                  // Step 3: set the track
-                  try {
-                    p.setOption('captions', 'track', {languageCode: en.languageCode});
-                    log('設定字幕軌道: ' + en.languageCode);
-                  } catch(err) { log('setOption 錯誤: ' + err.message, false); }
-
-                  // Step 4: try to get caption data via internal API
-                  log('\\n--- 嘗試抓取字幕內容 ---');
-
-                  // Try method A: getOption fontSize/reload
-                  setTimeout(function() {
-                    try {
-                      const track = p.getOption('captions','track');
-                      log('目前 track: ' + JSON.stringify(track));
-                    } catch(err) { log('getOption track 錯誤: ' + err.message, false); }
-
-                    // Method B: use fetch with the vss_id to construct URL
-                    log('\\n--- 嘗試用 vss_id 建構字幕 URL ---');
-                    const vssId = en.vss_id; // e.g. ".en" or "asr.en"
-                    const videoId = id;
-                    // YouTube timedtext URL pattern
-                    const urls = [
-                      'https://www.youtube.com/api/timedtext?v='+videoId+'&lang='+en.languageCode+'&fmt=json3',
-                      'https://www.youtube.com/api/timedtext?v='+videoId+'&lang='+en.languageCode+'&kind=asr&fmt=json3',
-                      'https://www.youtube.com/api/timedtext?v='+videoId+'&tlang=en&lang='+en.languageCode+'&fmt=json3',
-                    ];
-                    let tried = 0;
-                    urls.forEach(function(u) {
-                      fetch(u, {credentials:'include'}).then(function(r) {
-                        return r.text();
-                      }).then(function(txt) {
-                        log('URL: ' + u.slice(0,70));
-                        log('狀態長度: ' + txt.length);
-                        if (txt.length > 10) {
-                          log('✅ 有內容！前100字: ' + txt.slice(0,100), true);
+                  urlsToTry.forEach(function(u) {
+                    fetch(u, {credentials:'include'}).then(function(r){ return r.text(); })
+                    .then(function(txt) {
+                      log('\\nURL: ' + u.slice(u.indexOf('?')));
+                      log('長度: ' + txt.length);
+                      if (txt.length > 50) {
+                        log('原始內容前150字: ' + txt.slice(0,150));
+                        if (txt.includes('<text')) {
+                          const subs = parseXMLCaptions(txt);
+                          log('✅ XML 解析成功！共 ' + subs.length + ' 句', true);
+                          if (subs[0]) log('第1句: ['+subs[0].s.toFixed(1)+'s] ' + subs[0].text, true);
+                          if (subs[1]) log('第2句: ['+subs[1].s.toFixed(1)+'s] ' + subs[1].text, true);
+                          if (subs[2]) log('第3句: ['+subs[2].s.toFixed(1)+'s] ' + subs[2].text, true);
+                        } else if (txt.includes('events')) {
+                          log('JSON 格式！', true);
                           try {
                             const data = JSON.parse(txt);
-                            const events = data.events ? data.events.filter(function(e){return e.segs}) : [];
-                            log('句子數: ' + events.length, events.length>0);
-                            if (events[0]) log('第一句: ' + events[0].segs.map(function(s){return s.utf8}).join(''));
-                          } catch(pe) { log('JSON 解析失敗: ' + txt.slice(0,50)); }
-                        } else {
-                          log('❌ 空回應', false);
+                            const events = data.events.filter(function(e){return e.segs});
+                            log('✅ 共 ' + events.length + ' 句', true);
+                          } catch(pe){}
                         }
-                      }).catch(function(err) { log('fetch 錯誤: ' + err.message, false); });
-                    });
-
-                    // Method C: try with credentials (logged in user)
-                    log('\\n--- 嘗試帶 cookie 請求 ---');
-                    fetch('https://www.youtube.com/api/timedtext?v='+id+'&lang=en&fmt=json3', {
-                      credentials: 'include',
-                      headers: { 'Accept': 'application/json' }
-                    }).then(function(r){ return r.text(); })
-                    .then(function(txt){
-                      log('帶 cookie 長度: ' + txt.length);
-                      if(txt.length > 10) log('✅ 有內容: ' + txt.slice(0,100), true);
-                      else log('❌ 仍然空的', false);
-                    }).catch(function(e){ log('cookie 請求錯誤: ' + e.message, false); });
-
-                  }, 1000);
+                      } else {
+                        log('❌ 空或太短', false);
+                      }
+                    }).catch(function(err){ log('錯誤: '+err.message, false); });
+                  });
                 }, 3000);
               },
               onError: function(e) { log('播放器錯誤: ' + e.data, false); }
