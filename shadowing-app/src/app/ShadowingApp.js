@@ -508,9 +508,7 @@ export default function ShadowingApp() {
             <div>
               <div className="lbl" style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                 <span>YouTube 網址</span>
-                {localServerChecked&&<span className={'server-badge '+(localServerOk?'server-on':'server-off')}>
-                  {localServerOk?'🟢 本機伺服器':'🔴 本機伺服器'}
-                </span>}
+  
               </div>
               <div className="yt-row">
                 <input id="yt-url-input" type="text" placeholder="https://youtube.com/watch?v=..." onKeyDown={e=>e.key==='Enter'&&loadYT()}/>
@@ -520,26 +518,7 @@ export default function ShadowingApp() {
               {!ytError&&subs.length>0&&tab==='yt'&&<div className="ok">✓ 字幕已載入 {subs.length} 句</div>}
               {ytId&&!ytReady&&<div style={{fontSize:10,color:'var(--text3)',marginTop:3}}>播放器載入中...</div>}
               {ytId&&ytReady&&<div style={{fontSize:10,color:'var(--accent-text)',marginTop:3}}>✓ 播放器就緒</div>}
-              {!localServerOk&&localServerChecked&&<div style={{marginTop:'.5rem'}}>
-                <div className="tip" style={{marginBottom:'.4rem'}}>
-                  🔴 未偵測到本機伺服器<br/>
-                  安裝後即可自動抓取 YouTube 字幕
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:'.3rem'}}>
-                  <a href="https://nodejs.org" target="_blank" style={{fontSize:11,color:'var(--accent)',textDecoration:'none',display:'flex',alignItems:'center',gap:4}}>
-                    1️⃣ 安裝 Node.js →
-                  </a>
-                  <a href="/local-server.js" download style={{fontSize:11,color:'var(--accent)',textDecoration:'none',display:'flex',alignItems:'center',gap:4}}>
-                    2️⃣ 下載 local-server.js →
-                  </a>
-                  <a href="/啟動字幕伺服器.bat" download style={{fontSize:11,color:'var(--accent)',textDecoration:'none',display:'flex',alignItems:'center',gap:4}}>
-                    3️⃣ 下載 啟動字幕伺服器.bat →
-                  </a>
-                  <div style={{fontSize:10,color:'var(--text3)',marginTop:2}}>
-                    兩個檔案放同一資料夾，雙擊 bat 啟動
-                  </div>
-                </div>
-              </div>}
+
             </div>
             <div>
               <div className="lbl">手動上傳字幕</div>
