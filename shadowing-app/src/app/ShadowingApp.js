@@ -247,33 +247,37 @@ export default function ShadowingApp() {
         upUI({ytError:'字幕抓取失敗，請手動上傳 SRT', ytLoading:false})
         return false
       }
-      const parsed = data.transcript.map(item => ({
-        s:item.offset/1000, e:(item.offset+item.duration)/1000,
-        text:item.text.replace(/&#39;/g,"'").replace(/&amp;/g,'&').replace(/\n/g,' ').trim()
-      }))
+      // Support both formats: transcript array or direct array
+      const items = data.transcript || data
+      if (!items || !items.length) return false
+      const parsed = items.map(item => ({
+        s: item.offset/1000,
+        e: (item.offset + (item.duration || 3000))/1000,
+        text: (item.text||'').replace(/&#39;/g,"'").replace(/&amp;/g,'&').replace(/\n/g,' ').trim()
+      })).filter(item => item.text)
+      if (!parsed.length) return false
       S.current.subs=parsed; S.current.curIdx=-1
       upUI({subs:parsed, subFileName:'YouTube CC', curIdx:-1, ytLoading:false, status:{dot:'', msg:'字幕已載入，共 '+parsed.length+' 句'}})
       addHistory(id, id)
       return true
     }
 
-    // Try extension first via postMessage (user's IP, not blocked by YouTube)
+    // Try extension first via postMessage
     try {
       const extData = await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('timeout')), 5000)
+        const timeout = setTimeout(() => reject(new Error('Extension 逾時，嘗試其他方式')), 35000)
         const listener = (event) => {
           if (event.source !== window) return
           if (event.data.type === 'YT_TRANSCRIPT_RESULT' && event.data.videoId === id) {
             clearTimeout(timeout)
             window.removeEventListener('message', listener)
             if (event.data.error) reject(new Error(event.data.error))
-            else resolve({ transcript: event.data.data.map(t => ({
-              offset: t.offset, duration: t.duration, text: t.text
-            })) })
+            else resolve(event.data.data)
           }
         }
         window.addEventListener('message', listener)
         window.postMessage({ type: 'FETCH_YT_TRANSCRIPT', videoId: id }, '*')
+        upUI({status:{dot:'', msg:'字幕擷取中，請稍候...'}})
       })
       if (processTranscript(extData)) return
     } catch(e) { console.log('Extension:', e.message) }
