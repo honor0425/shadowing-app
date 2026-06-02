@@ -244,6 +244,15 @@ export default function ShadowingApp() {
       })
   }
 
+  // 刪除歷史紀錄的函數
+  const delHistory = (id) => {
+    upUI(u => {
+      const newHistory = u.history.filter(h => h.id !== id)
+      try { localStorage.setItem('shadowing-history', JSON.stringify(newHistory)) } catch(e) {}
+      return {history: newHistory}
+    })
+  }
+
   const loadYT = async () => {
     const input = document.getElementById('yt-url-input'); if (!input) return
     const url = input.value.trim()
@@ -658,13 +667,14 @@ export default function ShadowingApp() {
             }, 150)
           }}
           delRec={(i)=>upUI(u=>({savedRecs:u.savedRecs.filter((_,j)=>j!==i)}))}
+          delHistory={delHistory}
         />
       </div>
     </>
   )
 }
 
-function RightPanel({subs, curIdx, savedRecs, history, playSentence, loadYTFromHistory, delRec}) {
+function RightPanel({subs, curIdx, savedRecs, history, playSentence, loadYTFromHistory, delRec, delHistory}) {
   const [tab, setTab] = useState('subs')
   return (
     <div className="right">
@@ -701,6 +711,13 @@ function RightPanel({subs, curIdx, savedRecs, history, playSentence, loadYTFromH
               <div className="ht">{h.title||h.id}</div>
               <div className="hd">{new Date(h.time).toLocaleDateString('zh-TW')}</div>
             </div>
+            <button 
+              className="del-btn" 
+              onClick={(e)=>{
+                e.stopPropagation();
+                delHistory(h.id);
+              }}
+            >✕</button>
           </div>
         ))}
         {tab==='hist'&&history.length===0&&<div style={{padding:'2rem',textAlign:'center',color:'var(--text3)',fontSize:12}}>尚未有播放紀錄</div>}
