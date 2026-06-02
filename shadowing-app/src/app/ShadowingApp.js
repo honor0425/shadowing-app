@@ -222,13 +222,26 @@ export default function ShadowingApp() {
     r.readAsText(f)
   }
 
-  const addHistory = (id, title) => {
-    upUI(u => {
-      const existing = u.history.filter(h => h.id !== id)
-      const h = [{id, title, time:Date.now()}, ...existing].slice(0,20)
-      try { localStorage.setItem('shadowing-history', JSON.stringify(h)) } catch(e) {}
-      return {history:h}
-    })
+  const addHistory = (id) => {
+    // Try to get video title from YouTube oEmbed
+    fetch('https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v='+id+'&format=json')
+      .then(r=>r.json())
+      .then(data=>{
+        upUI(u => {
+          const existing = u.history.filter(h => h.id !== id)
+          const h = [{id, title:data.title||id, time:Date.now()}, ...existing].slice(0,20)
+          try { localStorage.setItem('shadowing-history', JSON.stringify(h)) } catch(e) {}
+          return {history:h}
+        })
+      })
+      .catch(()=>{
+        upUI(u => {
+          const existing = u.history.filter(h => h.id !== id)
+          const h = [{id, title:id, time:Date.now()}, ...existing].slice(0,20)
+          try { localStorage.setItem('shadowing-history', JSON.stringify(h)) } catch(e) {}
+          return {history:h}
+        })
+      })
   }
 
   const loadYT = async () => {
@@ -258,7 +271,7 @@ export default function ShadowingApp() {
       if (!parsed.length) return false
       S.current.subs=parsed; S.current.curIdx=-1
       upUI({subs:parsed, subFileName:'YouTube CC', curIdx:-1, ytLoading:false, status:{dot:'', msg:'字幕已載入，共 '+parsed.length+' 句'}})
-      addHistory(id, id)
+      addHistory(id)
       return true
     }
 
@@ -632,10 +645,17 @@ export default function ShadowingApp() {
           subs={subs} curIdx={curIdx} savedRecs={savedRecs} history={history}
           playSentence={(i)=>{stopAll();S.current.repDone=0;playSentence(i)}}
           loadYTFromHistory={(id)=>{
-            const input=document.getElementById('yt-url-input')
-            if(input){input.value='https://www.youtube.com/watch?v='+id}
-            S.current.tab='yt';upUI({tab:'yt'})
-            setTimeout(()=>loadYT(),100)
+            S.current.tab='yt';
+            upUI({tab:'yt', ytUrlInput:'https://www.youtube.com/watch?v='+id})
+            setTimeout(()=>{
+              const input=document.getElementById('yt-url-input')
+              if(input){
+                const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+                nativeInputValueSetter.call(input, 'https://www.youtube.com/watch?v='+id)
+                input.dispatchEvent(new Event('input', {bubbles:true}))
+              }
+              loadYT()
+            }, 150)
           }}
           delRec={(i)=>upUI(u=>({savedRecs:u.savedRecs.filter((_,j)=>j!==i)}))}
         />
@@ -674,9 +694,11 @@ function RightPanel({subs, curIdx, savedRecs, history, playSentence, loadYTFromH
 
         {tab==='hist'&&history.map((h,i)=>(
           <div key={i} className="hi" onClick={()=>loadYTFromHistory(h.id)}>
-            <div style={{fontSize:14}}>▶</div>
+            <img src={'https://img.youtube.com/vi/'+h.id+'/mqdefault.jpg'} 
+              style={{width:72,height:48,objectFit:'cover',borderRadius:4,flexShrink:0,background:'#000'}}
+              onError={e=>{e.target.style.display='none'}}/>
             <div style={{flex:1,minWidth:0}}>
-              <div className="ht">youtube.com/watch?v={h.id}</div>
+              <div className="ht">{h.title||h.id}</div>
               <div className="hd">{new Date(h.time).toLocaleDateString('zh-TW')}</div>
             </div>
           </div>
