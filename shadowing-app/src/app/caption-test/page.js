@@ -10,14 +10,14 @@ export default function CaptionTestPage() {
 
   return (
     <div style={{background:'#111',color:'#eee',fontFamily:'monospace',padding:'1.5rem',minHeight:'100vh'}}>
-      <h2 style={{marginBottom:'1rem'}}>字幕 XML 解析測試</h2>
+      <h2 style={{marginBottom:'1rem'}}>字幕完整內容測試</h2>
       <input id="url" defaultValue="https://www.youtube.com/watch?v=arj7oStGLkU"
         style={{width:'100%',padding:'8px',background:'#222',color:'#eee',border:'1px solid #444',borderRadius:'6px',marginBottom:'8px',boxSizing:'border-box'}}/>
       <button id="load-btn" style={{padding:'8px 18px',background:'#4ade80',color:'#000',border:'none',borderRadius:'6px',cursor:'pointer',fontWeight:'600',marginBottom:'1rem',display:'block'}}>
         載入並測試
       </button>
       <div id="player" style={{marginBottom:'1rem'}}/>
-      <pre id="log" style={{background:'#1a1a1a',padding:'1rem',borderRadius:'6px',fontSize:'11px',maxHeight:'500px',overflow:'auto',whiteSpace:'pre-wrap',border:'1px solid #333'}}>等待...</pre>
+      <pre id="log" style={{background:'#1a1a1a',padding:'1rem',borderRadius:'6px',fontSize:'11px',maxHeight:'600px',overflow:'auto',whiteSpace:'pre-wrap',border:'1px solid #333'}}>等待...</pre>
       <script dangerouslySetInnerHTML={{__html:`
         let player = null;
         function log(msg, ok) {
@@ -27,7 +27,7 @@ export default function CaptionTestPage() {
           el.scrollTop = el.scrollHeight;
         }
 
-        function parseXMLCaptions(xml) {
+        function parseXML(xml) {
           const parser = new DOMParser();
           const doc = parser.parseFromString(xml, 'text/xml');
           const texts = doc.querySelectorAll('text');
@@ -36,9 +36,8 @@ export default function CaptionTestPage() {
             const start = parseFloat(t.getAttribute('start'));
             const dur = parseFloat(t.getAttribute('dur') || '2');
             const text = t.textContent
-              .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
-              .replace(/&#39;/g,"'").replace(/&quot;/g,'"').trim();
-            if (text) result.push({ s: start, e: start + dur, text: text });
+              .replace(/&amp;/g,'&').replace(/&#39;/g,"'").trim();
+            if (text) result.push({ s: start, e: start+dur, text: text });
           });
           return result;
         }
@@ -65,47 +64,33 @@ export default function CaptionTestPage() {
                 setTimeout(function() {
                   p.pauseVideo();
                   const tl = p.getOption('captions','tracklist');
-                  if (!tl || !tl.length) { log('❌ 沒有字幕軌道', false); return; }
-                  const en = tl.find(function(t){return t.languageCode==='en'})
-                    || tl.find(function(t){return t.languageCode.startsWith('en')})
-                    || tl[0];
-                  log('字幕語言: ' + en.languageCode + ' vss_id=' + en.vss_id, true);
+                  if (!tl || !tl.length) { log('❌ 沒有字幕', false); return; }
+                  const en = tl.find(function(t){return t.languageCode==='en'}) || tl[0];
+                  log('語言: ' + en.languageCode, true);
 
-                  // Try all working URL patterns with XML parsing
-                  const urlsToTry = [
-                    'https://www.youtube.com/api/timedtext?v='+id+'&lang='+en.languageCode,
-                    'https://www.youtube.com/api/timedtext?v='+id+'&tlang=en&lang='+en.languageCode,
-                    'https://www.youtube.com/api/timedtext?v='+id+'&lang=en',
-                    'https://www.youtube.com/api/timedtext?v='+id+'&lang=en&kind=asr',
-                    'https://www.youtube.com/api/timedtext?v='+id+'&lang=a.en',
-                  ];
-
-                  urlsToTry.forEach(function(u) {
-                    fetch(u, {credentials:'include'}).then(function(r){ return r.text(); })
+                  const u = 'https://www.youtube.com/api/timedtext?v='+id+'&tlang=en&lang='+en.languageCode;
+                  log('抓取: ' + u);
+                  fetch(u, {credentials:'include'})
+                    .then(function(r){ return r.text(); })
                     .then(function(txt) {
-                      log('\\nURL: ' + u.slice(u.indexOf('?')));
                       log('長度: ' + txt.length);
-                      if (txt.length > 50) {
-                        log('原始內容前150字: ' + txt.slice(0,150));
-                        if (txt.includes('<text')) {
-                          const subs = parseXMLCaptions(txt);
-                          log('✅ XML 解析成功！共 ' + subs.length + ' 句', true);
-                          if (subs[0]) log('第1句: ['+subs[0].s.toFixed(1)+'s] ' + subs[0].text, true);
-                          if (subs[1]) log('第2句: ['+subs[1].s.toFixed(1)+'s] ' + subs[1].text, true);
-                          if (subs[2]) log('第3句: ['+subs[2].s.toFixed(1)+'s] ' + subs[2].text, true);
-                        } else if (txt.includes('events')) {
-                          log('JSON 格式！', true);
-                          try {
-                            const data = JSON.parse(txt);
-                            const events = data.events.filter(function(e){return e.segs});
-                            log('✅ 共 ' + events.length + ' 句', true);
-                          } catch(pe){}
-                        }
+                      log('前300字 (含空白): [' + txt.slice(0,300) + ']');
+                      log('trimmed後前300字: [' + txt.trim().slice(0,300) + ']');
+                      log('包含<text: ' + txt.includes('<text'));
+                      log('包含transcript: ' + txt.includes('transcript'));
+                      log('所有內容 (hex前50): ' + Array.from(txt.slice(0,50)).map(function(c){return c.charCodeAt(0).toString(16)}).join(' '));
+
+                      if (txt.includes('<text')) {
+                        const subs = parseXML(txt);
+                        log('\\n✅ 解析成功！共 ' + subs.length + ' 句', true);
+                        subs.slice(0,5).forEach(function(s,i){
+                          log((i+1)+'. ['+s.s.toFixed(1)+'s] '+s.text, true);
+                        });
                       } else {
-                        log('❌ 空或太短', false);
+                        log('\\n沒有 <text 標籤，原始內容:', false);
+                        log(txt);
                       }
-                    }).catch(function(err){ log('錯誤: '+err.message, false); });
-                  });
+                    }).catch(function(err){ log('fetch 錯誤: '+err.message, false); });
                 }, 3000);
               },
               onError: function(e) { log('播放器錯誤: ' + e.data, false); }
