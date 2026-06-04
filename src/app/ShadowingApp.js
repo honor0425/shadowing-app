@@ -38,7 +38,7 @@ export default function ShadowingApp() {
 
   const [ui, setUI] = useState({
     subs:[], curIdx:-1, repN:2, pauseSec:3, speed:1,
-    shadowMode:true, playing:false, waiting:false,
+    shadowMode:true,showSubtitle:true,playing:false, waiting:false,
     tab:'local', ytReady:false,
     badge:null, status:{dot:'', msg:'等待載入...'},
     mediaSrc:null, ytId:'', ytLoading:false, ytError:'',
@@ -375,7 +375,7 @@ export default function ShadowingApp() {
 
   const {subs,curIdx,tab,ytId,ytReady,ytLoading,ytError,mediaSrc,showPlayer,
     subFileName,badge,status,playing,waiting,progress,curTime,dur,
-    repN,pauseSec,speed,shadowMode,recActive,recSec,
+    repN,pauseSec,speed,shadowMode,recActive,recSec,showSubtitle,
     lastBlobUrl,savedRecs,history,localServerOk,localServerChecked} = ui
   const curSub = subs[curIdx]
 
@@ -591,6 +591,13 @@ export default function ShadowingApp() {
                 <span className="tog-lbl">🎙 跟讀暫停模式</span>
                 <label className="tog-wrap"><input type="checkbox" checked={shadowMode} onChange={e=>{S.current.shadowMode=e.target.checked;upUI({shadowMode:e.target.checked})}}/><span className="sl"/></label>
               </div>
+			  <div className="tog-row">
+                <span className="tog-lbl">👁️ 顯示字幕</span>
+                <label className="tog-wrap">
+                  <input type="checkbox" checked={showSubtitle} onChange={e=>upUI({showSubtitle:e.target.checked})} />
+                  <span className="sl"/>
+                </label>
+              </div>
             </div>
           </div>
         </aside>
@@ -623,7 +630,17 @@ export default function ShadowingApp() {
               <span className="sub-ctr">{curIdx>=0?(curIdx+1)+' / '+subs.length:'— / —'}</span>
               <div>{badge&&<span className={'bdg bdg-'+badge.type}>{badge.txt}</span>}</div>
             </div>
-            <div className={'sub-txt'+(curSub?'':' empty')}>{curSub?curSub.text:'載入影片與字幕後點播放...'}</div>
+            <div 
+              className={'sub-txt'+(curSub?'':' empty')}
+              style={{
+                filter: (curSub && !showSubtitle) ? 'blur(6px)' : 'none',
+                opacity: (curSub && !showSubtitle) ? 0.6 : 1,
+                transition: 'all 0.3s ease',
+                userSelect: (curSub && !showSubtitle) ? 'none' : 'auto'
+              }}
+            >
+              {curSub ? curSub.text : '載入影片與字幕後點播放...'}
+            </div>
           </div>
 
           {dur>0&&<div className="prog-wrap">
