@@ -10,7 +10,11 @@ function fmt(s) {
   return m + ':' + (sec < 10 ? '0' : '') + sec
 }
 function parseSRT(txt) {
-  return txt.trim().split(/\n\n+/).map(b => {
+  // 1. 先將 Windows (\r\n) 或舊版 Mac (\r) 的換行符號統一轉為 Linux (\n) 格式
+  const normalizedTxt = txt.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  
+  // 2. 再進行區塊切割
+  return normalizedTxt.trim().split(/\n\n+/).map(b => {
     const lines = b.split('\n'), tl = lines.find(l => /-->/.test(l))
     if (!tl) return null
     const [s, e] = tl.split('-->').map(x => ts2s(x.trim()))
@@ -19,10 +23,6 @@ function parseSRT(txt) {
     return text ? {s,e,text} : null
   }).filter(Boolean)
 }
-function parseVTT(txt) {
-  return parseSRT(txt.replace(/^WEBVTT[^\n]*\n/,'').replace(/NOTE[^\n]*\n[^\n]*/g,''))
-}
-
 const LOCAL_SERVER = 'http://localhost:7788'
 // Chrome Extension ID - update this after installing the extension
 const EXT_ID = localStorage && localStorage.getItem('shadowing-ext-id') || ''
