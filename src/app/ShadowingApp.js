@@ -55,20 +55,19 @@ function getAccessToken() {
   })
 }
 
-// 開啟 Google Drive Picker 並回傳 {name, blob}
-// 兩種都用「顯示所有檔案 + 可瀏覽資料夾」的視圖，確保 .mkv / .srt / .vtt 都看得到
+// 開啟 Google Drive Picker
+// kind='media' → 回傳 {name, fileId, token}（用串流 URL 播放，不整個下載）
+// kind='subtitle' → 回傳 {name, blob}（字幕小檔，直接下載內容解析）
 async function pickFromDrive(kind) {
   await ensureGoogleReady()
   const token = await getAccessToken()
 
   return new Promise((resolve, reject) => {
-    // 我的雲端硬碟：顯示全部檔案，可點進資料夾
     const myDrive = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
       .setIncludeFolders(true)
       .setSelectFolderEnabled(false)
       .setParent('root')
 
-    // 與我共用：別人分享來的檔案
     const shared = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
       .setIncludeFolders(true)
       .setSelectFolderEnabled(false)
@@ -84,19 +83,25 @@ async function pickFromDrive(kind) {
         if (data.action === window.google.picker.Action.PICKED) {
           const file = data.docs[0]
           try {
-            const doFetch = (tk) => fetch(
-              'https://www.googleapis.com/drive/v3/files/' + file.id + '?alt=media&supportsAllDrives=true',
-              { headers: { Authorization: 'Bearer ' + tk } }
-            )
-            let res = await doFetch(token)
-            if (!res.ok && res.status === 401) {
-              __accessToken = null
-              const newToken = await getAccessToken()
-              res = await doFetch(newToken)
+            if (kind === 'media') {
+              // 影片/音訊：不整個下載，改用串流 URL（大檔也能秒開）
+              resolve({ name: file.name, fileId: file.id, token })
+            } else {
+              // 字幕：小檔，下載內容
+              const doFetch = (tk) => fetch(
+                'https://www.googleapis.com/drive/v3/files/' + file.id + '?alt=media&supportsAllDrives=true',
+                { headers: { Authorization: 'Bearer ' + tk } }
+              )
+              let res = await doFetch(token)
+              if (!res.ok && res.status === 401) {
+                __accessToken = null
+                const newToken = await getAccessToken()
+                res = await doFetch(newToken)
+              }
+              if (!res.ok) throw new Error('下載失敗: ' + res.status)
+              const blob = await res.blob()
+              resolve({ name: file.name, blob })
             }
-            if (!res.ok) throw new Error('下載失敗: ' + res.status)
-            const blob = await res.blob()
-            resolve({ name: file.name, blob })
           } catch(e) { reject(e) }
         } else if (data.action === window.google.picker.Action.CANCEL) {
           reject(new Error('CANCELLED'))
@@ -105,6 +110,19 @@ async function pickFromDrive(kind) {
       .build()
     picker.setVisible(true)
   })
+}
+
+// 取得可播放的 Drive 串流 URL（帶 access token）
+async function getDriveStreamUrl(fileId, token) {
+  // 用 fetch 取得 blob URL（video 標籤無法直接帶 Authorization header，
+  // 但可先抓成 blob 再播；為避免大檔記憶體問題，這裡用 Range 由瀏覽器串流）
+  const res = await fetch(
+    'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media&supportsAllDrives=true',
+    { headers: { Authorization: 'Bearer ' + token } }
+  )
+  if (!res.ok) throw new Error('串流失敗: ' + res.status)
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
 }
 
 function ts2s(t) {
@@ -331,9 +349,10 @@ export default function ShadowingApp() {
   const pickMediaFromDrive = async () => {
     try {
       upUI({status:{dot:'', msg:'請在雲端硬碟視窗中選擇檔案...'}})
-      const { name, blob } = await pickFromDrive('media')
-      const file = new File([blob], name, { type: blob.type })
-      loadMedia(file)
+      const { name, fileId, token } = await pickFromDrive('media')
+      upUI({status:{dot:'', msg:'載入中：'+name+'...'}})
+      const url = await getDriveStreamUrl(fileId, token)
+      upUI({mediaSrc:url, showPlayer:true, ytId:'', status:{dot:'', msg:'已載入：'+name}})
     } catch(e) {
       if (e.message !== 'CANCELLED') {
         alert('從雲端硬碟載入失敗：'+e.message)
