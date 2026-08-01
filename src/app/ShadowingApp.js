@@ -113,16 +113,43 @@ async function pickFromDrive(kind) {
 }
 
 // 取得可播放的 Drive 串流 URL（帶 access token）
-async function getDriveStreamUrl(fileId, token) {
-  // 用 fetch 取得 blob URL（video 標籤無法直接帶 Authorization header，
-  // 但可先抓成 blob 再播；為避免大檔記憶體問題，這裡用 Range 由瀏覽器串流）
+// 回傳 { url, mimeType, isAudio }
+async function getDriveStreamUrl(fileId, token, fileName) {
+  // 先查 mimeType
+  let mimeType = ''
+  try {
+    const metaRes = await fetch(
+      'https://www.googleapis.com/drive/v3/files/' + fileId + '?fields=mimeType,name&supportsAllDrives=true',
+      { headers: { Authorization: 'Bearer ' + token } }
+    )
+    if (metaRes.ok) { const meta = await metaRes.json(); mimeType = meta.mimeType || '' }
+  } catch(e) {}
+
+  // 下載檔案內容
   const res = await fetch(
     'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media&supportsAllDrives=true',
     { headers: { Authorization: 'Bearer ' + token } }
   )
   if (!res.ok) throw new Error('串流失敗: ' + res.status)
-  const blob = await res.blob()
-  return URL.createObjectURL(blob)
+
+  // 依副檔名推斷正確 MIME type（Drive 有時給的 type 瀏覽器不認）
+  const name = (fileName || '').toLowerCase()
+  const extType = {
+    '.mp4':'video/mp4', '.webm':'video/webm', '.ogv':'video/ogg',
+    '.mov':'video/mp4', '.m4v':'video/mp4', '.mkv':'video/webm',
+    '.mp3':'audio/mpeg', '.m4a':'audio/mp4', '.wav':'audio/wav',
+    '.aac':'audio/aac', '.flac':'audio/flac', '.ogg':'audio/ogg'
+  }
+  let finalType = mimeType
+  for (const ext in extType) {
+    if (name.endsWith(ext)) { finalType = extType[ext]; break }
+  }
+
+  const rawBlob = await res.blob()
+  // 用正確 type 重建 blob，確保 <video>/<audio> 能識別
+  const blob = new Blob([rawBlob], { type: finalType || rawBlob.type || 'video/mp4' })
+  const isAudio = finalType.startsWith('audio/')
+  return { url: URL.createObjectURL(blob), mimeType: finalType, isAudio }
 }
 
 function ts2s(t) {
@@ -165,7 +192,7 @@ export default function ShadowingApp() {
     shadowMode:true,showSubtitle:true,playing:false, waiting:false,
     tab:'local', ytReady:false,
     badge:null, status:{dot:'', msg:'等待載入...'},
-    mediaSrc:null, ytId:'', ytLoading:false, ytError:'',
+    mediaSrc:null, mediaIsAudio:false, ytId:'', ytLoading:false, ytError:'',
     subFileName:'', showPlayer:false,
     progress:0, curTime:0, dur:0,
     recActive:false, recSec:0, lastBlobUrl:null,
@@ -351,8 +378,9 @@ export default function ShadowingApp() {
       upUI({status:{dot:'', msg:'請在雲端硬碟視窗中選擇檔案...'}})
       const { name, fileId, token } = await pickFromDrive('media')
       upUI({status:{dot:'', msg:'載入中：'+name+'...'}})
-      const url = await getDriveStreamUrl(fileId, token)
-      upUI({mediaSrc:url, showPlayer:true, ytId:'', status:{dot:'', msg:'已載入：'+name}})
+      const { url, isAudio } = await getDriveStreamUrl(fileId, token, name)
+      S.current.driveMediaIsAudio = isAudio
+      upUI({mediaSrc:url, mediaIsAudio:isAudio, showPlayer:true, ytId:'', status:{dot:'', msg:'已載入：'+name}})
     } catch(e) {
       if (e.message !== 'CANCELLED') {
         alert('從雲端硬碟載入失敗：'+e.message)
@@ -764,15 +792,10 @@ export default function ShadowingApp() {
         <main className="main">
           <div className="player-card">
             {showPlayer&&tab==='local'&&mediaSrc
-              ? (() => {
-                  const ext = mediaSrc
-                  // detect if audio by checking file type stored in name
-                  const audioExts = ['mp3','m4a','wav','ogg','aac','flac']
-                  const isAud = ui.subFileName && audioExts.some(e => ui.mediaSrc?.includes(e))
-                  return <video ref={vidRef} src={mediaSrc} controls={false}
-                    onTimeUpdate={()=>{const v=vidRef.current;if(!v)return;const d=v.duration||0;upUI({curTime:v.currentTime,dur:d,progress:d>0?v.currentTime/d*100:0})}}
-                    onLoadedMetadata={()=>{const d=vidRef.current?.duration||0;upUI({dur:d,status:{dot:'',msg:'就緒，點播放開始'}})}}/>
-                })()
+              ? <video ref={vidRef} src={mediaSrc} controls={ui.mediaIsAudio?true:false}
+                  onTimeUpdate={()=>{const v=vidRef.current;if(!v)return;const d=v.duration||0;upUI({curTime:v.currentTime,dur:d,progress:d>0?v.currentTime/d*100:0})}}
+                  onLoadedMetadata={()=>{const d=vidRef.current?.duration||0;upUI({dur:d,status:{dot:'',msg:'就緒，點播放開始'}})}}
+                  onError={(e)=>{upUI({status:{dot:'',msg:'無法播放此格式，請改用 MP4 或 WebM'}})}}/>
               : showPlayer&&tab==='yt'&&ytId
               ? <div className="yt-wrap"><div id="yt-div"/></div>
               : <div className="player-ph">
