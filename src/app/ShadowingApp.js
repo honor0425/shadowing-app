@@ -56,22 +56,35 @@ function getAccessToken() {
 }
 
 // 開啟 Google Drive Picker 並回傳 {name, blob}
-async function pickFromDrive(mimeTypes) {
+// kind: 'media' 顯示影片+音訊；'subtitle' 顯示所有檔案（Drive 不認得 .srt/.vtt）
+async function pickFromDrive(kind) {
   await ensureGoogleReady()
   const token = await getAccessToken()
 
   return new Promise((resolve, reject) => {
-    const view = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
-      .setMimeTypes(mimeTypes)
-      .setIncludeFolders(true)
-      .setSelectFolderEnabled(false)
-
-    const picker = new window.google.picker.PickerBuilder()
+    const builder = new window.google.picker.PickerBuilder()
       .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
       .setOAuthToken(token)
       .setDeveloperKey(GOOGLE_API_KEY)
       .setAppId(GOOGLE_CLIENT_ID.split('-')[0])
-      .addView(view)
+
+    if (kind === 'media') {
+      // 影片視圖
+      const videoView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS_VIDEOS)
+        .setIncludeFolders(true).setSelectFolderEnabled(false)
+      // 音訊：用 DOCS 視圖加 mimeType 篩選
+      const audioView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
+        .setMimeTypes('audio/mpeg,audio/mp4,audio/wav,audio/x-m4a,audio/x-wav,audio/ogg,audio/aac,audio/flac,audio/webm')
+        .setIncludeFolders(true).setSelectFolderEnabled(false)
+      builder.addView(videoView).addView(audioView)
+    } else {
+      // 字幕：Google Drive 對 .srt/.vtt 不認得，直接顯示所有檔案
+      const allView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
+        .setIncludeFolders(true).setSelectFolderEnabled(false)
+      builder.addView(allView)
+    }
+
+    builder
       .setCallback(async (data) => {
         if (data.action === window.google.picker.Action.PICKED) {
           const file = data.docs[0]
@@ -104,7 +117,8 @@ async function pickFromDrive(mimeTypes) {
           reject(new Error('CANCELLED'))
         }
       })
-      .build()
+
+    const picker = builder.build()
     picker.setVisible(true)
   })
 }
@@ -333,7 +347,7 @@ export default function ShadowingApp() {
   const pickMediaFromDrive = async () => {
     try {
       upUI({status:{dot:'', msg:'請在雲端硬碟視窗中選擇檔案...'}})
-      const { name, blob } = await pickFromDrive('video/mp4,video/webm,video/quicktime,video/x-msvideo,audio/mpeg,audio/mp4,audio/wav,audio/x-m4a,audio/x-wav,audio/ogg,audio/aac,audio/flac')
+      const { name, blob } = await pickFromDrive('media')
       const file = new File([blob], name, { type: blob.type })
       loadMedia(file)
     } catch(e) {
@@ -347,7 +361,7 @@ export default function ShadowingApp() {
   const pickSubtitleFromDrive = async () => {
     try {
       upUI({status:{dot:'', msg:'請在雲端硬碟視窗中選擇字幕檔...'}})
-      const { name, blob } = await pickFromDrive('text/plain,application/x-subrip,text/vtt,application/octet-stream')
+      const { name, blob } = await pickFromDrive('subtitle')
       const file = new File([blob], name, { type: blob.type })
       loadSubtitle(file)
     } catch(e) {
