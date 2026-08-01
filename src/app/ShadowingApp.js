@@ -100,7 +100,7 @@ async function pickFromDrive(kind) {
               }
               if (!res.ok) throw new Error('下載失敗: ' + res.status)
               const blob = await res.blob()
-              resolve({ name: file.name, blob })
+              resolve({ name: file.name, blob, fileId: file.id })
             }
           } catch(e) { reject(e) }
         } else if (data.action === window.google.picker.Action.CANCEL) {
@@ -380,7 +380,10 @@ export default function ShadowingApp() {
       upUI({status:{dot:'', msg:'載入中：'+name+'...'}})
       const { url, isAudio } = await getDriveStreamUrl(fileId, token, name)
       S.current.driveMediaIsAudio = isAudio
-      upUI({mediaSrc:url, mediaIsAudio:isAudio, showPlayer:true, ytId:'', status:{dot:'', msg:'已載入：'+name}})
+      S.current.tab = 'local'
+      upUI({tab:'local', mediaSrc:url, mediaIsAudio:isAudio, showPlayer:true, ytId:'', status:{dot:'', msg:'已載入：'+name}})
+      S.current.lastDriveVideo = { fileId, name, isAudio }
+      addDriveHistory(fileId, name, isAudio)
     } catch(e) {
       if (e.message !== 'CANCELLED') {
         alert('從雲端硬碟載入失敗：'+e.message)
@@ -392,9 +395,12 @@ export default function ShadowingApp() {
   const pickSubtitleFromDrive = async () => {
     try {
       upUI({status:{dot:'', msg:'請在雲端硬碟視窗中選擇字幕檔...'}})
-      const { name, blob } = await pickFromDrive('subtitle')
+      const { name, blob, fileId } = await pickFromDrive('subtitle')
       const file = new File([blob], name, { type: blob.type })
       loadSubtitle(file)
+      // 若已有雲端影片，把字幕關聯到該影片紀錄
+      const lv = S.current.lastDriveVideo
+      if (lv) attachSubtitleToHistory(lv.fileId, fileId, name)
     } catch(e) {
       if (e.message !== 'CANCELLED') {
         alert('從雲端硬碟載入失敗：'+e.message)
@@ -423,6 +429,78 @@ export default function ShadowingApp() {
           return {history:h}
         })
       })
+  }
+
+  // 記錄雲端硬碟檔案（影片）
+  const addDriveHistory = (fileId, name, isAudio) => {
+    upUI(u => {
+      const existing = u.history.filter(h => h.id !== 'drive:'+fileId)
+      const h = [{
+        id: 'drive:'+fileId,
+        type: 'drive',
+        fileId: fileId,
+        title: name,
+        isAudio: isAudio,
+        time: Date.now()
+      }, ...existing].slice(0,20)
+      try { localStorage.setItem('shadowing-history', JSON.stringify(h)) } catch(e) {}
+      return {history:h}
+    })
+  }
+
+  // 把字幕檔關聯到某個影片的紀錄
+  const attachSubtitleToHistory = (videoFileId, subFileId, subName) => {
+    upUI(u => {
+      const h = u.history.map(item => {
+        if (item.id === 'drive:'+videoFileId) {
+          return { ...item, subFileId, subName }
+        }
+        return item
+      })
+      try { localStorage.setItem('shadowing-history', JSON.stringify(h)) } catch(e) {}
+      return { history: h }
+    })
+  }
+
+  // 從紀錄重新載入雲端檔案（影片 + 字幕）
+  const loadDriveFromHistory = async (fileId, name, isAudio, subFileId, subName) => {
+    try {
+      S.current.tab = 'local'
+      upUI({tab:'local', status:{dot:'', msg:'從雲端載入中：'+name+'...'}})
+      await ensureGoogleReady()
+      const token = await getAccessToken()
+      const { url, isAudio: aud } = await getDriveStreamUrl(fileId, token, name)
+      S.current.driveMediaIsAudio = aud
+      S.current.lastDriveVideo = { fileId, name, isAudio: aud }
+      upUI({mediaSrc:url, mediaIsAudio:aud, showPlayer:true, ytId:'', status:{dot:'', msg:'已載入：'+name}})
+
+      // 若有關聯的字幕，一起載入
+      if (subFileId) {
+        upUI({status:{dot:'', msg:'載入字幕中...'}})
+        try {
+          const doFetch = (tk) => fetch(
+            'https://www.googleapis.com/drive/v3/files/' + subFileId + '?alt=media&supportsAllDrives=true',
+            { headers: { Authorization: 'Bearer ' + tk } }
+          )
+          let sres = await doFetch(token)
+          if (!sres.ok && sres.status === 401) {
+            __accessToken = null
+            const nt = await getAccessToken()
+            sres = await doFetch(nt)
+          }
+          if (sres.ok) {
+            const stext = await sres.text()
+            const sfname = (subName || '').toLowerCase()
+            const parsed = sfname.endsWith('.vtt') ? parseVTT(stext) : parseSRT(stext)
+            S.current.subs = parsed; S.current.curIdx = -1
+            upUI({subs:parsed, subFileName:subName||'字幕', curIdx:-1, status:{dot:'', msg:'影片與字幕已載入，共 '+parsed.length+' 句'}})
+          }
+        } catch(se) { console.log('字幕載入失敗:', se.message) }
+      }
+    } catch(e) {
+      if (e.message !== 'CANCELLED') alert('從雲端重新載入失敗：'+e.message)
+      upUI({status:{dot:'', msg:'等待載入...'}})
+    }
   }
 
   // 刪除歷史紀錄的函數
@@ -866,13 +944,14 @@ export default function ShadowingApp() {
           }}
           delRec={(i)=>upUI(u=>({savedRecs:u.savedRecs.filter((_,j)=>j!==i)}))}
           delHistory={delHistory}
+          loadDriveFromHistory={loadDriveFromHistory}
         />
       </div>
     </>
   )
 }
 
-function RightPanel({subs, curIdx, savedRecs, history, playSentence, loadYTFromHistory, delRec, delHistory}) {
+function RightPanel({subs, curIdx, savedRecs, history, playSentence, loadYTFromHistory, delRec, delHistory, loadDriveFromHistory}) {
   const [tab, setTab] = useState('subs')
   return (
     <div className="right">
@@ -900,24 +979,38 @@ function RightPanel({subs, curIdx, savedRecs, history, playSentence, loadYTFromH
         ))}
         {tab==='recs'&&savedRecs.length===0&&<div style={{padding:'2rem',textAlign:'center',color:'var(--text3)',fontSize:12}}>尚未有錄音</div>}
 
-        {tab==='hist'&&history.map((h,i)=>(
-          <div key={i} className="hi" onClick={()=>loadYTFromHistory(h.id)}>
-            <img src={'https://img.youtube.com/vi/'+h.id+'/mqdefault.jpg'} 
-              style={{width:72,height:48,objectFit:'cover',borderRadius:4,flexShrink:0,background:'#000'}}
-              onError={e=>{e.target.style.display='none'}}/>
+        {tab==='hist'&&history.map((h,i)=>{
+          const isDrive = h.type === 'drive'
+          const ytId = isDrive ? null : h.id
+          return (
+          <div key={i} className="hi" onClick={()=>{
+            if (isDrive) loadDriveFromHistory(h.fileId, h.title, h.isAudio, h.subFileId, h.subName)
+            else loadYTFromHistory(h.id)
+          }}>
+            {isDrive
+              ? <div style={{width:72,height:48,borderRadius:4,flexShrink:0,background:'var(--bg3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>
+                  {h.isAudio ? '🎵' : '🎬'}
+                </div>
+              : <img src={'https://img.youtube.com/vi/'+ytId+'/mqdefault.jpg'}
+                  style={{width:72,height:48,objectFit:'cover',borderRadius:4,flexShrink:0,background:'#000'}}
+                  onError={e=>{e.target.style.display='none'}}/>
+            }
             <div style={{flex:1,minWidth:0}}>
               <div className="ht">{h.title||h.id}</div>
-              <div className="hd">{new Date(h.time).toLocaleDateString('zh-TW')}</div>
+              <div className="hd">
+                {isDrive ? '☁ 雲端硬碟 · ' : ''}{new Date(h.time).toLocaleDateString('zh-TW')}
+                {isDrive && h.subFileId ? ' · 💬 含字幕' : ''}
+              </div>
             </div>
-            <button 
-              className="del-btn" 
+            <button
+              className="del-btn"
               onClick={(e)=>{
                 e.stopPropagation();
                 delHistory(h.id);
               }}
             >✕</button>
           </div>
-        ))}
+        )})}
         {tab==='hist'&&history.length===0&&<div style={{padding:'2rem',textAlign:'center',color:'var(--text3)',fontSize:12}}>尚未有播放紀錄</div>}
       </div>
     </div>
