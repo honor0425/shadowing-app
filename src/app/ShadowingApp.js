@@ -56,69 +56,53 @@ function getAccessToken() {
 }
 
 // 開啟 Google Drive Picker 並回傳 {name, blob}
-// kind: 'media' 顯示影片+音訊；'subtitle' 顯示所有檔案（Drive 不認得 .srt/.vtt）
+// 兩種都用「顯示所有檔案 + 可瀏覽資料夾」的視圖，確保 .mkv / .srt / .vtt 都看得到
 async function pickFromDrive(kind) {
   await ensureGoogleReady()
   const token = await getAccessToken()
 
   return new Promise((resolve, reject) => {
-    const builder = new window.google.picker.PickerBuilder()
-      .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
+    // 我的雲端硬碟：顯示全部檔案，可點進資料夾
+    const myDrive = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
+      .setIncludeFolders(true)
+      .setSelectFolderEnabled(false)
+      .setParent('root')
+
+    // 與我共用：別人分享來的檔案
+    const shared = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
+      .setIncludeFolders(true)
+      .setSelectFolderEnabled(false)
+      .setOwnedByMe(false)
+
+    const picker = new window.google.picker.PickerBuilder()
       .setOAuthToken(token)
       .setDeveloperKey(GOOGLE_API_KEY)
       .setAppId(GOOGLE_CLIENT_ID.split('-')[0])
-
-    if (kind === 'media') {
-      // 影片視圖
-      const videoView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS_VIDEOS)
-        .setIncludeFolders(true).setSelectFolderEnabled(false)
-      // 音訊：用 DOCS 視圖加 mimeType 篩選
-      const audioView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
-        .setMimeTypes('audio/mpeg,audio/mp4,audio/wav,audio/x-m4a,audio/x-wav,audio/ogg,audio/aac,audio/flac,audio/webm')
-        .setIncludeFolders(true).setSelectFolderEnabled(false)
-      builder.addView(videoView).addView(audioView)
-    } else {
-      // 字幕：Google Drive 對 .srt/.vtt 不認得，直接顯示所有檔案
-      const allView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
-        .setIncludeFolders(true).setSelectFolderEnabled(false)
-      builder.addView(allView)
-    }
-
-    builder
+      .addView(myDrive)
+      .addView(shared)
       .setCallback(async (data) => {
         if (data.action === window.google.picker.Action.PICKED) {
           const file = data.docs[0]
           try {
-            // 下載檔案內容
-            const res = await fetch(
-              'https://www.googleapis.com/drive/v3/files/'+file.id+'?alt=media',
-              { headers: { Authorization: 'Bearer '+token } }
+            const doFetch = (tk) => fetch(
+              'https://www.googleapis.com/drive/v3/files/' + file.id + '?alt=media&supportsAllDrives=true',
+              { headers: { Authorization: 'Bearer ' + tk } }
             )
-            if (!res.ok) {
-              // token 可能過期，重試一次
-              if (res.status === 401) {
-                __accessToken = null
-                const newToken = await getAccessToken()
-                const res2 = await fetch(
-                  'https://www.googleapis.com/drive/v3/files/'+file.id+'?alt=media',
-                  { headers: { Authorization: 'Bearer '+newToken } }
-                )
-                if (!res2.ok) throw new Error('下載失敗: '+res2.status)
-                const blob2 = await res2.blob()
-                resolve({ name: file.name, blob: blob2 })
-                return
-              }
-              throw new Error('下載失敗: '+res.status)
+            let res = await doFetch(token)
+            if (!res.ok && res.status === 401) {
+              __accessToken = null
+              const newToken = await getAccessToken()
+              res = await doFetch(newToken)
             }
+            if (!res.ok) throw new Error('下載失敗: ' + res.status)
             const blob = await res.blob()
-            resolve({ name: file.name, blob: blob })
+            resolve({ name: file.name, blob })
           } catch(e) { reject(e) }
         } else if (data.action === window.google.picker.Action.CANCEL) {
           reject(new Error('CANCELLED'))
         }
       })
-
-    const picker = builder.build()
+      .build()
     picker.setVisible(true)
   })
 }
