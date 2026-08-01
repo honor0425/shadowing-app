@@ -1,6 +1,114 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 
+// Google Drive Picker 憑證
+const GOOGLE_CLIENT_ID = '78814562371-ubnt67md4eu3kobg4pkldkhauaqj3fuq.apps.googleusercontent.com'
+const GOOGLE_API_KEY = 'AIzaSyDvChyMtpPIj-_7diRK6rvx5OkU37cvt-g'
+const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+
+// Google Drive Picker 全域 loader（保留 token 免重複登入）
+let __gapiLoaded = false
+let __gisLoaded = false
+let __pickerLoaded = false
+let __accessToken = null
+let __tokenClient = null
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector('script[src="'+src+'"]')) { resolve(); return }
+    const s = document.createElement('script')
+    s.src = src; s.async = true; s.defer = true
+    s.onload = resolve; s.onerror = reject
+    document.head.appendChild(s)
+  })
+}
+
+async function ensureGoogleReady() {
+  if (!__gapiLoaded) {
+    await loadScript('https://apis.google.com/js/api.js')
+    await new Promise(r => window.gapi.load('picker', r))
+    __gapiLoaded = true
+    __pickerLoaded = true
+  }
+  if (!__gisLoaded) {
+    await loadScript('https://accounts.google.com/gsi/client')
+    __gisLoaded = true
+  }
+  if (!__tokenClient) {
+    __tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_SCOPE,
+      callback: () => {} // 每次呼叫時覆寫
+    })
+  }
+}
+
+function getAccessToken() {
+  return new Promise((resolve, reject) => {
+    if (__accessToken) { resolve(__accessToken); return }
+    __tokenClient.callback = (res) => {
+      if (res.error) { reject(new Error(res.error)); return }
+      __accessToken = res.access_token
+      resolve(__accessToken)
+    }
+    __tokenClient.requestAccessToken({ prompt: '' })
+  })
+}
+
+// 開啟 Google Drive Picker 並回傳 {name, blob}
+async function pickFromDrive(mimeTypes) {
+  await ensureGoogleReady()
+  const token = await getAccessToken()
+
+  return new Promise((resolve, reject) => {
+    const view = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
+      .setMimeTypes(mimeTypes)
+      .setIncludeFolders(true)
+      .setSelectFolderEnabled(false)
+
+    const picker = new window.google.picker.PickerBuilder()
+      .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
+      .setOAuthToken(token)
+      .setDeveloperKey(GOOGLE_API_KEY)
+      .setAppId(GOOGLE_CLIENT_ID.split('-')[0])
+      .addView(view)
+      .setCallback(async (data) => {
+        if (data.action === window.google.picker.Action.PICKED) {
+          const file = data.docs[0]
+          try {
+            // 下載檔案內容
+            const res = await fetch(
+              'https://www.googleapis.com/drive/v3/files/'+file.id+'?alt=media',
+              { headers: { Authorization: 'Bearer '+token } }
+            )
+            if (!res.ok) {
+              // token 可能過期，重試一次
+              if (res.status === 401) {
+                __accessToken = null
+                const newToken = await getAccessToken()
+                const res2 = await fetch(
+                  'https://www.googleapis.com/drive/v3/files/'+file.id+'?alt=media',
+                  { headers: { Authorization: 'Bearer '+newToken } }
+                )
+                if (!res2.ok) throw new Error('下載失敗: '+res2.status)
+                const blob2 = await res2.blob()
+                resolve({ name: file.name, blob: blob2 })
+                return
+              }
+              throw new Error('下載失敗: '+res.status)
+            }
+            const blob = await res.blob()
+            resolve({ name: file.name, blob: blob })
+          } catch(e) { reject(e) }
+        } else if (data.action === window.google.picker.Action.CANCEL) {
+          reject(new Error('CANCELLED'))
+        }
+      })
+      .build()
+    picker.setVisible(true)
+  })
+}
+
 function ts2s(t) {
   const p = t.replace(',', '.').split(':')
   return p.length === 3 ? +p[0]*3600 + +p[1]*60 + parseFloat(p[2]) : +p[0]*60 + parseFloat(p[1])
@@ -222,6 +330,34 @@ export default function ShadowingApp() {
     r.readAsText(f)
   }
 
+  const pickMediaFromDrive = async () => {
+    try {
+      upUI({status:{dot:'', msg:'請在雲端硬碟視窗中選擇檔案...'}})
+      const { name, blob } = await pickFromDrive('video/mp4,video/webm,video/quicktime,video/x-msvideo,audio/mpeg,audio/mp4,audio/wav,audio/x-m4a,audio/x-wav,audio/ogg,audio/aac,audio/flac')
+      const file = new File([blob], name, { type: blob.type })
+      loadMedia(file)
+    } catch(e) {
+      if (e.message !== 'CANCELLED') {
+        alert('從雲端硬碟載入失敗：'+e.message)
+      }
+      upUI({status:{dot:'', msg:'等待載入...'}})
+    }
+  }
+
+  const pickSubtitleFromDrive = async () => {
+    try {
+      upUI({status:{dot:'', msg:'請在雲端硬碟視窗中選擇字幕檔...'}})
+      const { name, blob } = await pickFromDrive('text/plain,application/x-subrip,text/vtt,application/octet-stream')
+      const file = new File([blob], name, { type: blob.type })
+      loadSubtitle(file)
+    } catch(e) {
+      if (e.message !== 'CANCELLED') {
+        alert('從雲端硬碟載入失敗：'+e.message)
+      }
+      upUI({status:{dot:'', msg:'等待載入...'}})
+    }
+  }
+
   const addHistory = (id) => {
     // Try to get video title from YouTube oEmbed
     fetch('https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v='+id+'&format=json')
@@ -407,6 +543,8 @@ export default function ShadowingApp() {
         .src-tab{flex:1;padding:5px 4px;font-size:12px;font-weight:500;border:none;background:transparent;color:var(--text2);cursor:pointer;border-radius:5px;transition:all .15s;text-align:center}
         .src-tab.on{background:var(--bg4);color:var(--text)}
         .dz{border:1.5px dashed var(--border2);border-radius:var(--r);padding:.8rem;text-align:center;cursor:pointer;transition:all .2s}
+        .drv-btn{width:100%;margin-top:6px;padding:6px 8px;font-size:11px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:all .15s}
+        .drv-btn:hover{background:var(--accent-bg);color:var(--accent-text);border-color:var(--accent)}
         .dz:hover,.dz.has{border-style:solid;border-color:var(--accent);background:var(--accent-bg)}
         .dz p{font-size:12px;color:var(--text2);margin-top:2px}.dz small{font-size:11px;color:var(--text3)}
         .dz .fn{font-size:11px;font-weight:500;color:var(--accent-text);margin-top:3px;word-break:break-all}
@@ -519,6 +657,7 @@ export default function ShadowingApp() {
                 {mediaSrc&&<div className="fn">已載入</div>}
               </div>
               <input id="media-file" type="file" accept="video/*,audio/*" style={{display:'none'}} onChange={e=>loadMedia(e.target.files[0])}/>
+              <button className="drv-btn" onClick={pickMediaFromDrive}>☁ 從 Google 雲端硬碟選擇</button>
             </div>
             <div>
               <div className="lbl">字幕檔</div>
@@ -527,6 +666,7 @@ export default function ShadowingApp() {
                 {subFileName&&tab==='local'&&<div className="fn">✓ {subFileName.length>22?subFileName.slice(0,20)+'…':subFileName}</div>}
               </div>
               <input id="sub-file" type="file" accept=".srt,.vtt,.txt" style={{display:'none'}} onChange={e=>loadSubtitle(e.target.files[0])}/>
+              <button className="drv-btn" onClick={pickSubtitleFromDrive}>☁ 從 Google 雲端硬碟選擇</button>
             </div>
           </>}
 
@@ -553,6 +693,7 @@ export default function ShadowingApp() {
                 {subFileName&&tab==='yt'&&<div className="fn">✓ {subFileName}</div>}
               </div>
               <input id="yt-sub-file" type="file" accept=".srt,.vtt,.txt" style={{display:'none'}} onChange={e=>loadSubtitle(e.target.files[0])}/>
+              <button className="drv-btn" onClick={pickSubtitleFromDrive}>☁ 從 Google 雲端硬碟選擇</button>
             </div>
           </>}
 
