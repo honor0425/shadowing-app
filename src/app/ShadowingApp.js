@@ -2,8 +2,8 @@
 import { useState, useRef, useEffect } from 'react'
 
 // Google Drive Picker 憑證
-const GOOGLE_CLIENT_ID = '78814562371-ubnt67md4eu3kobg4pkldkhauaqj3fuq.apps.googleusercontent.com'
-const GOOGLE_API_KEY = 'AIzaSyDvChyMtpPIj-_7diRK6rvx5OkU37cvt-g'
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || ''
 const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
 
 // Google Drive Picker 全域 loader（保留 token 免重複登入）
